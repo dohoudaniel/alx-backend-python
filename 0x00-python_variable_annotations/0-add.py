@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-A type-anotated function add that takes a float a and a float b as arguments
+A type-anotated function 'add' that
+takes a float a and a float b as arguments
 
 Arguments:
     a: float
