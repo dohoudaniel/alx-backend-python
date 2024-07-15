@@ -8,5 +8,7 @@ Arguments:
 Returns:
     The sum of a and b as a float.
 """
+
+
 def add(a: float, b: float) -> float:
     return a + b
