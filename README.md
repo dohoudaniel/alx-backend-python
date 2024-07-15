@@ -1,2 +1,5 @@
-# alx-backend-python
-This repository contains all my Python backend code, while working with and learning in the ALX SE Backend Specializations.
+### ALX Backend Specializations (Python)
+In this repository, I learn and master the art of learning backend with Python.
+
+Some of the concepts covered in this repository are:
+- Variable Annotations With Python
