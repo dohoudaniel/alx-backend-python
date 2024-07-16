@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+A module that returns the value of a
+key in a dictionary, if it exists
 """
 
 
