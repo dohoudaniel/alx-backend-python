@@ -12,7 +12,7 @@ then returns the 10 random numbers
 # Import statements
 async_generator = __import__('0-async_generator').async_generator
 from typing import List
-import asyncio
+# import asyncio
 
 
 async def async_comprehension() -> List[float]:
