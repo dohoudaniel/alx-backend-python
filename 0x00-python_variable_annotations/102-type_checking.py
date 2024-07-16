@@ -6,10 +6,10 @@ an intger and returns a tuple of integers
 
 
 # Import statement
-from typing import List, Tuple, Any
+from typing import List
 
 
-def zoom_array(lst: Tuple[Any], factor: int = 2) -> List:
+def zoom_array(lst: List[int], factor: int = 2) -> List:
     """
     Returns a tuple of integers
     """
