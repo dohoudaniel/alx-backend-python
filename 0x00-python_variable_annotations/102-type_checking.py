@@ -1,5 +1,19 @@
-def zoom_array(lst: Tuple, factor: int = 2) -> Tuple:
-    zoomed_in: Tuple = [
+#!/usr/bin/env python3
+"""
+A function that takes in a tuple and
+an intger and returns a tuple of integers
+"""
+
+
+# Import statement
+from typing import List
+
+
+def zoom_array(lst: List[int], factor: int = 2) -> List[int]:
+    """
+    Returns a tuple of integers
+    """
+    zoomed_in: List = [
         item for item in lst
         for i in range(factor)
     ]
