@@ -5,7 +5,7 @@ Duck Type Annotation
 
 
 # Import statements
-from typing import Sequence, Union, Any # List, Optional
+from typing import Sequence, Union, Any  # List, Optional
 
 
 # The types of the elements of the input are not known
