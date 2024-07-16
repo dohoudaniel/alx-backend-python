@@ -11,13 +11,14 @@ The random module is used
 # Import statements
 import random
 import asyncio
+from typing import Generator
 
 
-async def async_generator():
+async def async_generator() -> Generator[float, None, None]:
     """
     Yields a random number between 0 and 10
     """
     for i in range(10):
         await asyncio.sleep(1)
-        my_random_number = random.randint(0, 10)
+        my_random_number = random.random * 10
         yield my_random_number
