@@ -1,2 +1,1 @@
-# alx-backend-python
-Learning Advanced Python Development - ALX ProDev Backend
+Learning Advanced Python through the ALX ProDev Backend program.
