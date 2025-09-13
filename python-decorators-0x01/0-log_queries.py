@@ -2,6 +2,7 @@
 import sqlite3
 import functools
 from typing import Callable, Any
+from datetime import datetime
 
 def log_queries(func: Callable[..., Any]) -> Callable[..., Any]:
     """
