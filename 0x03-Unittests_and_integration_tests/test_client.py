@@ -35,7 +35,6 @@ class TestGithubOrgClient(unittest.TestCase):
         """
         expected_payload: Any = {"org": org_name}
         url = client.GithubOrgClient.ORG_URL.format(org=org_name)
-        ghurl = "https://api.github.com/orgs/google/repos"
 
         # Patch get_json as a context manager to avoid decorator-order issues
         with patch("client.get_json") as mock_get_json:
@@ -101,7 +100,7 @@ class TestGithubOrgClient(unittest.TestCase):
         with patch.object(client.GithubOrgClient,
                           "_public_repos_url",
                           new_callable=PropertyMock) as mock_pub_url:
-            mock_pub_url.return_value = ghurl
+            mock_pub_url.return_value = "https://api.github.com/orgs/google/repos"
 
             github_client = client.GithubOrgClient("google")
 
@@ -116,14 +115,15 @@ class TestGithubOrgClient(unittest.TestCase):
             result_mit = github_client.public_repos(license="mit")
             self.assertEqual(result_mit, ["repo1"])
 
-            # Ensure _public_repos_url property was accessed.
-            mock_pub_url.assert_called()
+            # Ensure _public_repos_url property was accessed exactly once.
+            mock_pub_url.assert_called_once()
 
-            # Ensure get_json was called with the expected URL.
-            mock_get_json.assert_called_with(
+            # Ensure get_json was called exactly once with the expected URL.
+            mock_get_json.assert_called_once_with(
                 "https://api.github.com/orgs/google/repos"
             )
 
 
 if __name__ == "__main__":
     unittest.main()
+
