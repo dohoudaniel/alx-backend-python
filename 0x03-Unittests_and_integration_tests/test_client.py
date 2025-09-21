@@ -5,7 +5,7 @@ patching and property mocking.
 
 Includes:
 - unit tests for org, _public_repos_url, public_repos and has_license
-- an integration test that mocks only external requests via utils.requests.get
+- an integration test that mocks only external requests via requests.get
   using parameterized_class and fixtures from fixtures.py
 """
 
@@ -125,58 +125,43 @@ class TestGithubOrgClient(unittest.TestCase):
 
 
 # Integration test: mocks only external HTTP calls (requests.get)
-@parameterized_class(("org_payload", "repos_payload",
-                      "expected_repos", "apache2_repos"), [
-    # Pull fixture values from fixtures.py; ensure fixtures exposes these names
-    (fixtures.org_payload,
-     fixtures.repos_payload,
-     fixtures.expected_repos,
-     fixtures.apache2_repos),
-])
+@parameterized_class([{
+    "org_payload": fixtures.org_payload,
+    "repos_payload": fixtures.repos_payload,
+    "expected_repos": fixtures.expected_repos,
+    "apache2_repos": fixtures.apache2_repos,
+}])
 class TestIntegrationGithubOrgClient(unittest.TestCase):
     """
     Integration tests for GithubOrgClient.public_repos using real method flows
     but with network requests mocked to return fixture payloads.
 
-    setUpClass starts a patcher for utils.requests.get and configures
-    side_effect so that requests.get(url).json() returns the right fixture
-    depending on the URL requested.
+    setUpClass starts a patcher for requests.get and configures side_effect
+    so that requests.get(url).json() returns the right fixture based on url.
     """
 
     @classmethod
     def setUpClass(cls) -> None:
-        """
-        Start patcher for requests.get and
-        set side_effect to return fixtures.
-        """
-        # Start patcher on utils.requests.get (get_json uses that)
-        cls.get_patcher = patch("utils.requests.get")
+        """Start patcher for requests.get and set side_effect to return fixtures."""
+        # Patch the top-level requests.get (integration: mock network)
+        cls.get_patcher = patch("requests.get")
         cls.mock_get = cls.get_patcher.start()
 
-        # Build a mapping from expected urls to fixture payloads.
-        # The org URL is the one used by
-        # GithubOrgClient.ORG_URL.format(org=...)
-        # The repos URL should be taken from the org_payload['repos_url']
-        # value.
+        # Build URLs we expect the code to request
         org_url = client.GithubOrgClient.ORG_URL.format(org="google")
         repos_url = cls.org_payload.get("repos_url")
 
         def _get_side_effect(url: str, *args, **kwargs):
-            """
-            Side effect for requests.get: return a Mock whose json() returns
-            the appropriate fixture based on the URL requested.
-            """
+            """Return a mock response whose json() returns the correct fixture."""
             mock_resp = Mock()
             if url == org_url:
                 mock_resp.json.return_value = cls.org_payload
             elif url == repos_url:
                 mock_resp.json.return_value = cls.repos_payload
             else:
-                # default: return an empty mapping
                 mock_resp.json.return_value = {}
             return mock_resp
 
-        # Attach the side effect to the started mock
         cls.mock_get.side_effect = _get_side_effect
 
     @classmethod
@@ -194,14 +179,13 @@ class TestIntegrationGithubOrgClient(unittest.TestCase):
         """
         github_client = client.GithubOrgClient("google")
 
-        # assert all repos match expected
         result = github_client.public_repos()
         self.assertEqual(result, self.expected_repos)
 
-        # assert license filtering works
         result_apache = github_client.public_repos(license="apache-2.0")
         self.assertEqual(result_apache, self.apache2_repos)
 
 
 if __name__ == "__main__":
     unittest.main()
+
