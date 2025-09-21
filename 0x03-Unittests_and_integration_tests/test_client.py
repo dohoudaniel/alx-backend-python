@@ -82,7 +82,7 @@ class TestGithubOrgClient(unittest.TestCase):
         The test asserts that:
         - public_repos returns the expected names (all repos)
         - filtering by license works
-        - the mocked property and get_json are called once
+        - the mocked property and get_json were called once
         """
         gh_url = "https://api.github.com/orgs/google/repos"
         repos_payload: List[Dict[str, Any]] = [
@@ -125,12 +125,17 @@ class TestGithubOrgClient(unittest.TestCase):
 
 
 # Integration test: mocks only external HTTP calls (requests.get)
-@parameterized_class([{
-    "org_payload": fixtures.org_payload,
-    "repos_payload": fixtures.repos_payload,
-    "expected_repos": fixtures.expected_repos,
-    "apache2_repos": fixtures.apache2_repos,
-}])
+@parameterized_class(
+    ("org_payload", "repos_payload", "expected_repos", "apache2_repos"),
+    [
+        (
+            fixtures.org_payload,
+            fixtures.repos_payload,
+            fixtures.expected_repos,
+            fixtures.apache2_repos,
+        ),
+    ],
+)
 class TestIntegrationGithubOrgClient(unittest.TestCase):
     """
     Integration tests for GithubOrgClient.public_repos using real method flows
@@ -188,4 +193,3 @@ class TestIntegrationGithubOrgClient(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
