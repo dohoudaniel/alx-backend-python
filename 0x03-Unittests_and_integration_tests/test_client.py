@@ -39,7 +39,8 @@ class TestGithubOrgClient(unittest.TestCase):
 
             github_client = client.GithubOrgClient(org_name)
 
-            # Access the memoized property twice to ensure caching doesn't cause extra calls
+            # Access the memoized property twice to ensure caching doesn't
+            # cause extra calls
             result1 = github_client.org
             result2 = github_client.org
 
@@ -95,22 +96,25 @@ class TestGithubOrgClient(unittest.TestCase):
 
             github_client = client.GithubOrgClient("google")
 
-            # Call public_repos without license filter -> should return all repo names
+            # Call public_repos without license filter -> should return all
+            # repo names
             result_all = github_client.public_repos()
             expected_all = ["repo1", "repo2", "repo3"]
             self.assertEqual(result_all, expected_all)
 
-            # Call public_repos with a license filter -> should return only matching names
+            # Call public_repos with a license filter -> should return only
+            # matching names
             result_mit = github_client.public_repos(license="mit")
             self.assertEqual(result_mit, ["repo1"])
 
-            # Ensure _public_repos_url property was accessed (once per new client usage)
+            # Ensure _public_repos_url property was accessed (once per new
+            # client usage)
             mock_pub_url.assert_called()
 
             # Ensure get_json was called at least once with the URL
-            mock_get_json.assert_called_with("https://api.github.com/orgs/google/repos")
+            mock_get_json.assert_called_with(
+                "https://api.github.com/orgs/google/repos")
 
 
 if __name__ == "__main__":
     unittest.main()
-
