@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
 """
-Unit test for client.GithubOrgClient.org using parameterized inputs.
+Unit tests for client.GithubOrgClient methods using parameterized inputs,
+patching and property mocking.
 
-This test:
-- parameterizes the org name (google, abc)
-- patches client.get_json to avoid real HTTP calls (used as a context manager)
-- asserts that get_json is called once with the expected URL
-- asserts that the returned value matches the mocked payload
+This test module covers:
+- Test that GithubOrgClient.org returns the expected payload (mocked)
+- Test that GithubOrgClient._public_repos_url returns the expected repos_url
+  by mocking the `org` property using PropertyMock
+
+No external HTTP calls are made because get_json / org are patched.
 """
 
 from typing import Any
 import unittest
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, PropertyMock
 from parameterized import parameterized
 
 import client
 
 
 class TestGithubOrgClient(unittest.TestCase):
-    """Tests for GithubOrgClient.org method."""
+    """Tests for GithubOrgClient."""
 
     @parameterized.expand([
         ("google",),
@@ -45,6 +47,27 @@ class TestGithubOrgClient(unittest.TestCase):
             # Both accesses should return the expected payload
             self.assertEqual(result1, expected_payload)
             self.assertEqual(result2, expected_payload)
+
+    def test_public_repos_url(self) -> None:
+        """
+        Test GithubOrgClient._public_repos_url by mocking the `org` property.
+        Use PropertyMock to mock the property-style behavior.
+        """
+        payload = {"repos_url": "https://api.github.com/orgs/google/repos"}
+
+        # Patch the `org` property on GithubOrgClient to return our payload
+        with patch.object(client.GithubOrgClient, "org", new_callable=PropertyMock) as mock_org:
+            mock_org.return_value = payload
+
+            github_client = client.GithubOrgClient("google")
+            # Access the protected property that depends on org property
+            result = github_client._public_repos_url
+
+            # Verify the returned URL matches the mocked payload
+            self.assertEqual(result, payload["repos_url"])
+
+            # Ensure the property was accessed exactly once
+            mock_org.assert_called_once()
 
 
 if __name__ == "__main__":
