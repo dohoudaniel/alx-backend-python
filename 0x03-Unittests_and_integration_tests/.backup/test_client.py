@@ -9,7 +9,8 @@ This test module covers:
   by mocking the `org` property using PropertyMock
 - Test that GithubOrgClient.public_repos returns expected repo names and that
   _public_repos_url and get_json are each called exactly once
-- Test that GithubOrgClient.has_license returns correct boolean
+
+No external HTTP calls are made because get_json / org are patched.
 """
 
 from typing import Any, Dict, List
@@ -86,6 +87,7 @@ class TestGithubOrgClient(unittest.TestCase):
         - assert public_repos returns expected list of names
         - assert mocked property and get_json were called once
         """
+        ghUrl = "https://api.github.com/orgs/google/repos"
         # Prepare a fake repos payload.
         repos_payload: List[Dict[str, Any]] = [
             {"name": "repo1", "license": {"key": "mit"}},
@@ -99,7 +101,7 @@ class TestGithubOrgClient(unittest.TestCase):
         with patch.object(client.GithubOrgClient,
                           "_public_repos_url",
                           new_callable=PropertyMock) as mock_pub_url:
-            mock_pub_url.return_value = "https://api.github.com/orgs/google/repos"
+            mock_pub_url.return_value = ghUrl
 
             github_client = client.GithubOrgClient("google")
 
@@ -121,20 +123,6 @@ class TestGithubOrgClient(unittest.TestCase):
             mock_get_json.assert_called_once_with(
                 "https://api.github.com/orgs/google/repos"
             )
-
-    @parameterized.expand([
-        ({"license": {"key": "my_license"}}, "my_license", True),
-        ({"license": {"key": "other_license"}}, "my_license", False),
-    ])
-    def test_has_license(self,
-                         repo: Dict[str, Any],
-                         license_key: str,
-                         expected: bool) -> None:
-        """
-        Test GithubOrgClient.has_license with different repos and keys.
-        """
-        result = client.GithubOrgClient.has_license(repo, license_key)
-        self.assertEqual(result, expected)
 
 
 if __name__ == "__main__":
