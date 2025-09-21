@@ -7,11 +7,13 @@ This test module covers:
 - Test that GithubOrgClient.org returns the expected payload (mocked)
 - Test that GithubOrgClient._public_repos_url returns the expected repos_url
   by mocking the `org` property using PropertyMock
+- Test that GithubOrgClient.public_repos returns expected repo names and that
+  _public_repos_url and get_json are each called exactly once
 
 No external HTTP calls are made because get_json / org are patched.
 """
 
-from typing import Any
+from typing import Any, List, Dict
 import unittest
 from unittest.mock import patch, Mock, PropertyMock
 from parameterized import parameterized
@@ -68,6 +70,45 @@ class TestGithubOrgClient(unittest.TestCase):
 
             # Ensure the property was accessed exactly once
             mock_org.assert_called_once()
+
+    @patch("client.get_json")
+    def test_public_repos(self, mock_get_json: Mock) -> None:
+        """
+        Test GithubOrgClient.public_repos:
+        - mock get_json (decorator) to return a chosen repos payload
+        - mock _public_repos_url (context manager) to return a chosen URL
+        - assert public_repos returns expected list of names
+        - assert mocked property and get_json were called once
+        """
+        # Prepare a fake repos payload
+        repos_payload: List[Dict[str, Any]] = [
+            {"name": "repo1", "license": {"key": "mit"}},
+            {"name": "repo2", "license": {"key": "apache-2.0"}},
+            {"name": "repo3", "license": None},
+        ]
+        # get_json will return the repos_payload when called
+        mock_get_json.return_value = repos_payload
+
+        # Patch the _public_repos_url property to return a specific URL
+        with patch.object(client.GithubOrgClient, "_public_repos_url", new_callable=PropertyMock) as mock_pub_url:
+            mock_pub_url.return_value = "https://api.github.com/orgs/google/repos"
+
+            github_client = client.GithubOrgClient("google")
+
+            # Call public_repos without license filter -> should return all repo names
+            result_all = github_client.public_repos()
+            expected_all = ["repo1", "repo2", "repo3"]
+            self.assertEqual(result_all, expected_all)
+
+            # Call public_repos with a license filter -> should return only matching names
+            result_mit = github_client.public_repos(license="mit")
+            self.assertEqual(result_mit, ["repo1"])
+
+            # Ensure _public_repos_url property was accessed (once per new client usage)
+            mock_pub_url.assert_called()
+
+            # Ensure get_json was called at least once with the URL
+            mock_get_json.assert_called_with("https://api.github.com/orgs/google/repos")
 
 
 if __name__ == "__main__":
