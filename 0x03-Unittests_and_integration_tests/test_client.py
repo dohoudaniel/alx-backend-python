@@ -145,14 +145,19 @@ class TestIntegrationGithubOrgClient(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        """Start patcher for requests.get and set side_effect to return fixtures."""
+        """
+        Start patcher for requests.get and
+        set side_effect to return fixtures.
+        """
         # Start patcher on utils.requests.get (get_json uses that)
         cls.get_patcher = patch("utils.requests.get")
         cls.mock_get = cls.get_patcher.start()
 
         # Build a mapping from expected urls to fixture payloads.
-        # The org URL is the one used by GithubOrgClient.ORG_URL.format(org=...)
-        # The repos URL should be taken from the org_payload['repos_url'] value.
+        # The org URL is the one used by
+        # GithubOrgClient.ORG_URL.format(org=...)
+        # The repos URL should be taken from the org_payload['repos_url']
+        # value.
         org_url = client.GithubOrgClient.ORG_URL.format(org="google")
         repos_url = cls.org_payload.get("repos_url")
 
@@ -200,4 +205,3 @@ class TestIntegrationGithubOrgClient(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
