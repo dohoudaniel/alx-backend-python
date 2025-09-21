@@ -29,7 +29,10 @@ class TestGithubOrgClient(unittest.TestCase):
         ("abc",),
     ])
     def test_org(self, org_name: str) -> None:
-        """Test that GithubOrgClient.org returns expected payload and calls get_json once."""
+        """
+        Test that GithubOrgClient.org returns expected
+        payload and calls get_json once.
+        """
         expected_payload: Any = {"org": org_name}
         url = client.GithubOrgClient.ORG_URL.format(org=org_name)
 
@@ -53,13 +56,17 @@ class TestGithubOrgClient(unittest.TestCase):
 
     def test_public_repos_url(self) -> None:
         """
-        Test GithubOrgClient._public_repos_url by mocking the `org` property.
-        Use PropertyMock to mock the property-style behavior.
+        Test GithubOrgClient._public_repos_url by
+        mocking the `org` property.
+        Use PropertyMock to mock the property-style
+        behavior.
         """
         payload = {"repos_url": "https://api.github.com/orgs/google/repos"}
 
         # Patch the `org` property on GithubOrgClient to return our payload
-        with patch.object(client.GithubOrgClient, "org", new_callable=PropertyMock) as mock_org:
+        with patch.object(client.GithubOrgClient,
+                          "org",
+                          new_callable=PropertyMock) as mock_org:
             mock_org.return_value = payload
 
             github_client = client.GithubOrgClient("google")
@@ -91,8 +98,11 @@ class TestGithubOrgClient(unittest.TestCase):
         mock_get_json.return_value = repos_payload
 
         # Patch the _public_repos_url property to return a specific URL
-        with patch.object(client.GithubOrgClient, "_public_repos_url", new_callable=PropertyMock) as mock_pub_url:
-            mock_pub_url.return_value = "https://api.github.com/orgs/google/repos"
+        with patch.object(client.GithubOrgClient,
+                          "_public_repos_url",
+                          new_callable=PropertyMock) as mock_pub_url:
+            mock_pub_url.return_value =
+            "https://api.github.com/orgs/google/repos"
 
             github_client = client.GithubOrgClient("google")
 
