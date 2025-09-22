@@ -125,8 +125,7 @@ class TestGithubOrgClient(unittest.TestCase):
 
 
 # Integration test: mocks only external HTTP calls (requests.get)
-@parameterized_class(("org_payload", "repos_payload", "expected_repos",
-                      "apache2_repos"),
+@parameterized_class(("org_payload", "repos_payload", "expected_repos", "apache2_repos"),
                      [(fixtures.org_payload, fixtures.repos_payload,
                        fixtures.expected_repos, fixtures.apache2_repos)])
 class TestIntegrationGithubOrgClient(unittest.TestCase):
@@ -186,3 +185,4 @@ class TestIntegrationGithubOrgClient(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
