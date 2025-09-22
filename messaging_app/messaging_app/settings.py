@@ -122,3 +122,25 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+
+# Django REST Framework configuration
+REST_FRAMEWORK = {
+    # Require authentication by default for all API endpoints
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+
+    # Default authentication backends for the API
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        # Session auth (works with Django's login / admin)
+        "rest_framework.authentication.SessionAuthentication",
+        # Basic auth (useful for curl/testing)
+        "rest_framework.authentication.BasicAuthentication",
+        # You can add token/jwt auth here if you use them:
+        # "rest_framework.authentication.TokenAuthentication",
+        # "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+}
+
