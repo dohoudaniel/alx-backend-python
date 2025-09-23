@@ -7,3 +7,4 @@ drf-yasg
 django-environ
 mysqlclient
 python-dotenv
+drf-nested-routers
