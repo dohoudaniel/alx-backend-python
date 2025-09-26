@@ -6,6 +6,7 @@ from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework.views import View
 from .models import Conversation, Message
+from rest_framework import permissions
 
 
 class IsConversationParticipant(BasePermission):
