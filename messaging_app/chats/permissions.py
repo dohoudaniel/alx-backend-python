@@ -1,61 +1,42 @@
 #!/usr/bin/env python3
-"""Permissions for chats app."""
+"""
+Custom permission classes for the chats app.
 
-from typing import Any
+IsParticipantOfConversation enforces:
+- only authenticated users can access the API
+- only participants of a conversation can view/update/delete that conversation
+- only participants can send/view/update/delete messages related to that conversation
+"""
+from typing import Any, Optional
 from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
-from rest_framework.views import View
+from rest_framework.views import APIView
+
 from .models import Conversation, Message
-from rest_framework import permissions
 
 
-class IsConversationParticipant(BasePermission):
+class IsParticipantOfConversation(BasePermission):
     """
-    Object-level permission to allow only participants of a Conversation
-    to access it (retrieve, update, delete).
-    """
-
-    def has_object_permission(self, request: Request, view: View, obj: Conversation) -> bool:  # type: ignore[override]
-        user = request.user
-        if not user or not user.is_authenticated:
-            return False
-        # obj.participants is a M2M; check if current user is included
-        return obj.participants.filter(pk=user.pk).exists()
-
-    def has_permission(self, request: Request, view: View) -> bool:
-        # For list/create we allow authenticated users (list will be filtered in view)
-        return bool(request.user and request.user.is_authenticated)
-
-
-class IsMessageParticipantOrSender(BasePermission):
-    """
-    Permission for Message object:
-    - Allow message retrieval if the requesting user is a participant of the conversation
-      the message belongs to OR is the message sender.
-    - For create, ensure the user is a participant of the target conversation.
+    Permission that ensures:
+    - request.user is authenticated
+    - for object-level checks:
+      - Conversations: user must be participant
+      - Messages: user must be participant of message.conversation (or sender)
+    - for create actions on messages: user must be a participant of the provided conversation
     """
 
-    def has_object_permission(self, request: Request, view: View, obj: Message) -> bool:  # type: ignore[override]
-        user = request.user
-        if not user or not user.is_authenticated:
-            return False
-        # Sender can always see their message
-        if obj.sender_id == user.pk:
-            return True
-        # Participants in the conversation can see the message
-        return obj.conversation.participants.filter(pk=user.pk).exists()
-
-    def has_permission(self, request: Request, view: View) -> bool:
-        """
-        For create: validate that conversation provided in payload includes the user.
-        For other actions, require authentication and object-level checks will apply.
-        """
+    def has_permission(self, request: Request, view: APIView) -> bool:
+        # Basic authentication check
         user = request.user
         if not user or not user.is_authenticated:
             return False
 
-        if view.action == "create":
-            # Ensure a conversation id is provided and the user is a participant
+        # Allow list/retrieve actions — object-level permission will filter results
+        # For create actions on messages we need extra validation: ensure user is part of conversation
+        action = getattr(view, "action", None)
+
+        # If creating a message, ensure conversation is provided and the user is a participant
+        if action == "create" and view.basename in ("message", "conversation-messages"):
             conv_id = request.data.get("conversation")
             if conv_id is None:
                 return False
@@ -65,5 +46,31 @@ class IsMessageParticipantOrSender(BasePermission):
                 return False
             return conv.participants.filter(pk=user.pk).exists()
 
+        # For creating conversations, authenticated user is enough (we add them as participant in view)
         return True
+
+    def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        """
+        Object-level permission:
+        - If obj is a Conversation: user must be one of its participants.
+        - If obj is a Message: user must be a participant of the message's conversation
+          or the sender of the message.
+        """
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        # Conversation instance check
+        if isinstance(obj, Conversation):
+            return obj.participants.filter(pk=user.pk).exists()
+
+        # Message instance check
+        if isinstance(obj, Message):
+            if obj.sender_id == user.pk:
+                # allow sender to see/edit their own message
+                return True
+            return obj.conversation.participants.filter(pk=user.pk).exists()
+
+        # Fallback deny
+        return False
 
