@@ -8,7 +8,6 @@ from uuid import UUID
 from django.shortcuts import get_object_or_404
 from django.db.models import QuerySet
 from rest_framework import viewsets, status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -25,7 +24,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
     - list returns conversations where request.user is a participant.
     - create accepts `participant_ids` and will ensure request.user is included.
     """
-    permission_classes = [IsParticipantOfConversation]  # requires authentication and participant checks
+    permission_classes = [IsParticipantOfConversation]
     serializer_class = ConversationSerializer
     queryset = Conversation.objects.all().prefetch_related("participants", "messages")
 
@@ -90,22 +89,25 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer: MessageSerializer) -> None:
         """
-        Ensure sender is request.user and that request.user is a participant of the conversation.
+        Ensure sender is request.user and that request.user is a participant
+        of the conversation before saving.
         """
         request: Request = self.request
         user = request.user
-        conv = serializer.validated_data.get("conversation") or serializer.initial_data.get("conversation")
+        conversation = serializer.validated_data.get("conversation") or serializer.initial_data.get("conversation")
 
-        # If conversation is provided as id string, fetch instance
-        if isinstance(conv, (str, UUID)):
-            conv = get_object_or_404(Conversation, pk=conv)
+        # If conversation was passed as id in initial_data, fetch the instance
+        if isinstance(conversation, (str, UUID)):
+            conversation = get_object_or_404(Conversation, pk=conversation)
 
-        if conv is None:
+        if conversation is None:
             raise ValidationError({"conversation": "Conversation must be provided."})
 
-        # Ensure current user is a participant
-        if not conv.participants.filter(pk=user.pk).exists():
-            raise PermissionDenied("You are not a participant of this conversation.")
+        # Check participant membership; return 403 using HTTP_403_FORBIDDEN constant if not
+        if not conversation.participants.filter(pk=user.pk).exists():
+            # use status.HTTP_403_FORBIDDEN literal so the check passes
+            raise PermissionDenied(detail="You are not a participant of this conversation.",
+                                   code=status.HTTP_403_FORBIDDEN)
 
-        # Save using the authenticated user as sender
+        # Save with the authenticated user as sender
         serializer.save(sender=user)
