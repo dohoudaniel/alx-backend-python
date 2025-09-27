@@ -8,3 +8,5 @@ django-environ
 mysqlclient
 python-dotenv
 drf-nested-routers
+djangorestframework-simplejwt
+django-filter
