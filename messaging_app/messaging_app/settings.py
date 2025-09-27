@@ -38,7 +38,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'chats'
+    'chats',
+    'django_filter',
 ]
 
 MIDDLEWARE = [
@@ -142,5 +143,15 @@ REST_FRAMEWORK = {
         # "rest_framework.authentication.TokenAuthentication",
         # "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
+    # Default filter backends so views can rely on DjangoFilterBackend
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.OrderingFilter",
+        "rest_framework.filters.SearchFilter",
+    ],
+    # You can set a global default paginator or specify per-view; we will
+    # use a custom paginator per MessageViewSet but keeping a sensible default
+    "DEFAULT_PAGINATION_CLASS": "chats.pagination.StandardResultsSetPagination",
+    "PAGE_SIZE": 20,
 }
 
