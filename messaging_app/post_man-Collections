@@ -1,0 +1,216 @@
+{
+  "info": {
+    "name": "Messaging App API",
+    "description": "Collection to test JWT auth, conversations and messages for the messaging_app.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth - Get Token",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/api/token/", "host": ["{{base_url}}"], "path": ["api", "token"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Token obtained', function () {",
+              "  pm.response.to.have.status(200);",
+              "  var json = pm.response.json();",
+              "  pm.expect(json).to.have.property('access');",
+              "  pm.environment.set('access_token', json.access);",
+              "  if (json.refresh) pm.environment.set('refresh_token', json.refresh);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth - Refresh Token",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/api/token/refresh/", "host": ["{{base_url}}"], "path": ["api", "token", "refresh"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Refresh token success', function () {",
+              "  pm.response.to.have.status(200);",
+              "  var json = pm.response.json();",
+              "  pm.expect(json).to.have.property('access');",
+              "  pm.environment.set('access_token', json.access);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conversations - List",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+        "url": { "raw": "{{base_url}}/api/conversations/", "host": ["{{base_url}}"], "path": ["api", "conversations"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('List conversations (200 or 204)', function(){",
+              "  pm.expect(pm.response.code).to.be.oneOf([200,204]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conversations - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"participant_ids\": [\n    \"{{other_user_id}}\"\n  ]\n}"
+        },
+        "url": { "raw": "{{base_url}}/api/conversations/", "host": ["{{base_url}}"], "path": ["api", "conversations"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Conversation created', function () {",
+              "  pm.response.to.have.status(201);",
+              "  var json = pm.response.json();",
+              "  if (json.id) pm.environment.set('conversation_id', json.id);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Messages - List (conversation)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+        "url": {
+          "raw": "{{base_url}}/api/messages?conversation={{conversation_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "messages"],
+          "query": [{ "key": "conversation", "value": "{{conversation_id}}" }]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('List messages for conversation', function(){",
+              "  pm.expect(pm.response.code).to.be.oneOf([200,204]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Messages - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation\": \"{{conversation_id}}\",\n  \"message_body\": \"Hello from Postman at {{__timestamp}}\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/api/messages/", "host": ["{{base_url}}"], "path": ["api", "messages"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Message created', function () {",
+              "  pm.response.to.have.status(201);",
+              "  var json = pm.response.json();",
+              "  if (json.id) pm.environment.set('message_id', json.id);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conversations - Unauthorized access (no token)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/api/conversations/{{conversation_id}}/", "host": ["{{base_url}}"], "path": ["api", "conversations", "{{conversation_id}}"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Unauthenticated cannot access', function () {",
+              "  pm.expect(pm.response.code).to.be.oneOf([401,403]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conversations - Non-participant access (other user)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{other_user_token}}"}],
+        "url": { "raw": "{{base_url}}/api/conversations/{{conversation_id}}/", "host": ["{{base_url}}"], "path": ["api", "conversations", "{{conversation_id}}"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Non participant forbidden', function () {",
+              "  pm.expect(pm.response.code).to.be.oneOf([403,404]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}
+
