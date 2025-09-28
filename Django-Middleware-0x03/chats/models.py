@@ -1,11 +1,9 @@
-from django.db import models
-
 # Create your models here.
 
 #!/usr/bin/env python3
 """Chat app models: custom User, Conversation, ConversationParticipant, Message."""
 from __future__ import annotations
-
+from django.db import models
 import uuid
 from django.db import models
 from django.conf import settings
