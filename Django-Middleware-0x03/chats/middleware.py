@@ -1,236 +1,93 @@
 #!/usr/bin/env python3
-"""
-Chat middlewares.
-
-Contains:
-- RequestLoggingMiddleware: logs requests to a file (optional, kept short)
-- RestrictAccessByTimeMiddleware: blocks chat endpoints outside allowed hours
-- OffensiveLanguageMiddleware: rate-limits POSTs to message endpoints per IP
-  (implements a sliding time window, e.g. max 5 messages per 60 seconds)
-
-To enable the rate-limit middleware, add the path
-"chats.middleware.OffensiveLanguageMiddleware" to MIDDLEWARE in settings.py.
-
-Configuration (optional, add to settings.py):
-- CHAT_RATE_LIMIT_MAX_MESSAGES: int (default 5)
-- CHAT_RATE_LIMIT_WINDOW_SECONDS: int (default 60)
-- CHAT_RATE_LIMIT_PATHS: list[str] (default ['/api/messages'])
-"""
-from __future__ import annotations
-
+# (other imports already in your file)
+from typing import Callable, List
 import logging
-import os
-import threading
-from collections import deque
-from datetime import time
-from typing import Callable, Deque, Dict, Iterable, List
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.utils import timezone
 
 
-class RequestLoggingMiddleware:
-    """Log each request to a file (configured via settings.REQUESTS_LOG_FILE)."""
-
-    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
-        self.get_response = get_response
-        log_path = getattr(settings, "REQUESTS_LOG_FILE", None)
-        if not log_path:
-            base_dir = getattr(settings, "BASE_DIR", None)
-            log_path = os.path.join(str(base_dir) if base_dir else ".", "requests.log")
-
-        self.logger = logging.getLogger("request_logger")
-        self.logger.setLevel(logging.INFO)
-        if not any(isinstance(h, logging.FileHandler) for h in self.logger.handlers):
-            fh = logging.FileHandler(log_path)
-            fh.setFormatter(logging.Formatter("%(message)s"))
-            self.logger.addHandler(fh)
-            self.logger.propagate = False
-
-    def __call__(self, request: HttpRequest) -> HttpResponse:
-        user = getattr(request, "user", None)
-        user_repr = "Anonymous"
-        try:
-            if user and getattr(user, "is_authenticated", False):
-                user_repr = getattr(user, "username", None) or getattr(user, "email", None) or str(user.pk)
-        except Exception:
-            user_repr = "Anonymous"
-        ts = timezone.now().isoformat(sep=" ", timespec="seconds")
-        try:
-            self.logger.info(f"{ts} - User: {user_repr} - Path: {request.path}")
-        except Exception:
-            # never break the request on logging failure
-            pass
-        return self.get_response(request)
-
-
-class RestrictAccessByTimeMiddleware:
+class RolepermissionMiddleware:
     """
-    Deny access to chat endpoints outside allowed hours.
+    Middleware to enforce role-based permissions for chat operations.
 
     Default behaviour:
-      - allowed hours: 06:00 (inclusive) .. 21:00 (exclusive)
-      - restricted paths: ['/api/messages', '/api/conversations']
+      - Apply check only to state-changing HTTP methods:
+        POST, PUT, PATCH, DELETE
+      - Check only on paths that contain one of CHAT_ROLE_PROTECTED_PATHS
+        (default: ['/api/messages', '/api/conversations'])
+      - Allowed roles default to CHAT_ROLE_ALLOWED = ['admin', 'moderator']
 
-    Config via settings:
-      CHAT_ACCESS_OPEN_HOUR, CHAT_ACCESS_CLOSE_HOUR, CHAT_RESTRICTED_PATHS
+    Users who are staff or superuser bypass checks.
     """
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response
+        # Methods that imply modification and thus require role checks
+        self._protected_methods = {"POST", "PUT", "PATCH", "DELETE"}
 
-        open_hour = getattr(settings, "CHAT_ACCESS_OPEN_HOUR", 6)
-        close_hour = getattr(settings, "CHAT_ACCESS_CLOSE_HOUR", 21)
-        if not (0 <= open_hour <= 23 and 0 <= close_hour <= 23):
-            raise ValueError("CHAT_ACCESS_OPEN_HOUR and CHAT_ACCESS_CLOSE_HOUR must be in 0..23")
+        # allowed roles and protected paths are configurable in settings.py
+        self.allowed_roles: List[str] = [
+            r.lower() for r in getattr(settings, "CHAT_ROLE_ALLOWED", ["admin", "moderator"])
+        ]
+        self.protected_paths: List[str] = getattr(
+            settings,
+            "CHAT_ROLE_PROTECTED_PATHS",
+            ["/api/messages", "/api/conversations"],
+        )
 
-        self.open_time = time(open_hour, 0, 0)
-        self.close_time = time(close_hour, 0, 0)
-        default_paths = ["/api/messages", "/api/conversations"]
-        self.restricted_paths: List[str] = getattr(settings, "CHAT_RESTRICTED_PATHS", default_paths)
-
-        self.logger = logging.getLogger("chat_time_restriction")
+        self.logger = logging.getLogger("chat_role_permission")
         if not self.logger.handlers:
             handler = logging.StreamHandler()
             handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
             self.logger.addHandler(handler)
             self.logger.propagate = False
 
-    def _is_path_restricted(self, path: str) -> bool:
-        for p in self.restricted_paths:
+    def _is_protected_path(self, path: str) -> bool:
+        """Return True if the request path should be checked for role permissions."""
+        for p in self.protected_paths:
             if p and p in path:
                 return True
         return False
 
-    def _is_within_allowed_hours(self, now_time) -> bool:
-        open_t = self.open_time
-        close_t = self.close_time
-        if open_t < close_t:
-            return open_t <= now_time < close_t
-        return now_time >= open_t or now_time < close_t
-
-    def __call__(self, request: HttpRequest) -> HttpResponse:
-        if self._is_path_restricted(request.path):
-            now = timezone.localtime(timezone.now()).time()
-            allowed = self._is_within_allowed_hours(now)
-            if not allowed:
-                user = getattr(request, "user", None)
-                user_repr = "Anonymous"
-                try:
-                    if user and getattr(user, "is_authenticated", False):
-                        user_repr = getattr(user, "username", None) or getattr(user, "email", None) or str(user.pk)
-                except Exception:
-                    pass
-                self.logger.warning(
-                    "Blocked chat access outside allowed hours - User: %s Path: %s Time: %s",
-                    user_repr, request.path, now.isoformat()
-                )
-                return JsonResponse(
-                    {"detail": "Chat access is restricted at this time. Please try during allowed hours."},
-                    status=403,
-                )
-        return self.get_response(request)
-
-
-class OffensiveLanguageMiddleware:
-    """
-    Rate-limit POST requests to message endpoints by IP address (sliding window).
-
-    Default policy:
-      - MAX_MESSAGES_PER_WINDOW = 5
-      - WINDOW_SECONDS = 60
-      - TARGET_PATHS = ['/api/messages']
-
-    Configurable via settings:
-      CHAT_RATE_LIMIT_MAX_MESSAGES
-      CHAT_RATE_LIMIT_WINDOW_SECONDS
-      CHAT_RATE_LIMIT_PATHS
-
-    NOTE:
-      - This implementation uses an in-memory store (process-local). For multi-process
-        deployments consider using Redis or another centralized store.
-      - The middleware counts POST requests only (typical message create action).
-    """
-
-    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
-        self.get_response = get_response
-        self.max_messages: int = getattr(settings, "CHAT_RATE_LIMIT_MAX_MESSAGES", 5)
-        self.window_seconds: int = getattr(settings, "CHAT_RATE_LIMIT_WINDOW_SECONDS", 60)
-        default_paths = ["/api/messages"]
-        self.target_paths: List[str] = getattr(settings, "CHAT_RATE_LIMIT_PATHS", default_paths)
-
-        # Map ip -> deque[timestamp_float]
-        self._requests: Dict[str, Deque[float]] = {}
-        self._lock = threading.Lock()
-
-        # Logger
-        self.logger = logging.getLogger("chat_rate_limiter")
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-            self.logger.addHandler(handler)
-            self.logger.propagate = False
-
-    def _is_target_path(self, path: str) -> bool:
-        for p in self.target_paths:
-            if p and p in path:
-                return True
-        return False
-
-    def _get_client_ip(self, request: HttpRequest) -> str:
-        # Respect X-Forwarded-For if present (first entry is original client IP)
-        xff = request.META.get("HTTP_X_FORWARDED_FOR")
-        if xff:
-            # X-Forwarded-For can be a comma-separated list
-            parts = [p.strip() for p in xff.split(",") if p.strip()]
-            if parts:
-                return parts[0]
-        # Fallback to REMOTE_ADDR
-        return request.META.get("REMOTE_ADDR", "unknown")
-
-    def __call__(self, request: HttpRequest) -> HttpResponse:
+    def _user_has_allowed_role(self, user) -> bool:
+        """Check if user has one of the allowed roles or is staff/superuser."""
+        if not user:
+            return False
         try:
-            # Only count POST requests to the configured message endpoints
-            if request.method.upper() == "POST" and self._is_target_path(request.path):
-                ip = self._get_client_ip(request)
-                now_ts = timezone.now().timestamp()
+            # Staff/superuser always allowed
+            if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+                return True
+            # try to read role attribute (case-insensitive)
+            role = getattr(user, "role", None)
+            if role is None:
+                # maybe username-based admin flag: allow if user.is_staff handled above
+                return False
+            return str(role).lower() in self.allowed_roles
+        except Exception:
+            # on unexpected error, deny by default (safer)
+            return False
 
-                with self._lock:
-                    dq = self._requests.get(ip)
-                    if dq is None:
-                        dq = deque()
-                        self._requests[ip] = dq
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        # only enforce on protected methods and protected paths
+        method = request.method.upper()
+        path = request.path or ""
 
-                    # Remove timestamps older than window
-                    cutoff = now_ts - float(self.window_seconds)
-                    while dq and dq[0] < cutoff:
-                        dq.popleft()
+        if method in self._protected_methods and self._is_protected_path(path):
+            user = getattr(request, "user", None)
 
-                    if len(dq) >= self.max_messages:
-                        # Rate limit exceeded
-                        self.logger.warning(
-                            "Rate limit exceeded for IP %s on path %s: %d in %d seconds",
-                            ip, request.path, len(dq), self.window_seconds
-                        )
-                        return JsonResponse(
-                            {"detail": "Rate limit exceeded. Try again later."},
-                            status=429,
-                        )
+            # If not authenticated -> 403 (settings may already block anonymous earlier)
+            if user is None or not getattr(user, "is_authenticated", False):
+                self.logger.info("RolepermissionMiddleware: Anonymous or unauthenticated blocked for %s %s", method, path)
+                return JsonResponse({"detail": "Forbidden: authentication required"}, status=403)
 
-                    # Record this request
-                    dq.append(now_ts)
+            # Check role
+            if not self._user_has_allowed_role(user):
+                # Log denied attempt and return 403
+                uname = getattr(user, "username", None) or getattr(user, "email", None) or str(getattr(user, "pk", "unknown"))
+                self.logger.warning("RolepermissionMiddleware: User %s denied %s %s (role=%s)", uname, method, path, getattr(user, "role", None))
+                return JsonResponse({"detail": "Forbidden: role not permitted to perform this action"}, status=403)
 
-                    # Optional cleanup: if deque becomes empty remove key (not needed here)
-                    if not dq:
-                        # If dq empty after trimming (unlikely immediately), remove mapping
-                        self._requests.pop(ip, None)
-
-        except Exception as exc:
-            # Never break application due to middleware failure; log and proceed
-            try:
-                self.logger.exception("Error in OffensiveLanguageMiddleware: %s", exc)
-            except Exception:
-                pass
-
+        # otherwise allow request to proceed
         return self.get_response(request)
+
