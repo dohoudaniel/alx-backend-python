@@ -8,15 +8,32 @@ class Message(models.Model):
     sender = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='messaging_sent_messages'   # <- namespaced to avoid clashes
+        related_name='messaging_sent_messages'
     )
     receiver = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='messaging_received_messages'  # <- namespaced to avoid clashes
+        related_name='messaging_received_messages'
     )
     content = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    # reply/thread fields
+    parent_message = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='replies'
+    )
+    thread_root = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='thread_messages',
+        help_text='Top-level message for this thread (self for root messages).'
+    )
 
     # fields for edit tracking
     edited = models.BooleanField(default=False)
@@ -26,63 +43,39 @@ class Message(models.Model):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='messaging_edited_messages'  # also namespaced
+        related_name='messaging_edited_messages'
     )
 
     class Meta:
         ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['thread_root']),  # speeds up fetching a thread
+            models.Index(fields=['parent_message']),
+        ]
 
     def __str__(self):
-        return f'Message from {self.sender} to {self.receiver} at {self.timestamp}'
+        return f'Message {self.pk} from {self.sender} to {self.receiver} at {self.timestamp}'
 
+    def save(self, *args, **kwargs):
+        """
+        Ensure thread_root is set:
+         - If this message has a parent_message, thread_root = parent's thread_root if present,
+           otherwise parent's pk (parent is root).
+         - If no parent_message, thread_root stays None (or self after save).
+        We'll set thread_root to parent's thread_root or parent; after first save of a root
+        message, set thread_root=self (optional).
+        """
+        # If reply: compute thread_root from parent
+        if self.parent_message:
+            parent = self.parent_message
+            # prefer parent's thread_root if set, else parent's pk (parent is root)
+            self.thread_root = parent.thread_root or parent
+        super().save(*args, **kwargs)
 
-class Notification(models.Model):
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='notifications'   # keep if you want to use notifications across app; change if it clashes
-    )
-    message = models.ForeignKey(
-        Message,
-        on_delete=models.CASCADE,
-        related_name='notifications',
-        null=True,
-        blank=True
-    )
-    verb = models.CharField(max_length=255)  # e.g., "sent you a message"
-    is_read = models.BooleanField(default=False)
-    timestamp = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['-timestamp']
-
-    def __str__(self):
-        return f'Notification for {self.user}: {self.verb}'
-
-
-class MessageHistory(models.Model):
-    """
-    Stores previous versions of a Message's content.
-    Each record is created before the Message is updated.
-    """
-    message = models.ForeignKey(
-        Message,
-        on_delete=models.CASCADE,
-        related_name='history'
-    )
-    old_content = models.TextField()
-    edited_at = models.DateTimeField(default=timezone.now)
-    editor = models.ForeignKey(
-        User,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name='message_edit_history'
-    )
-
-    class Meta:
-        ordering = ['-edited_at']
-
-    def __str__(self):
-        return f'History for Message {self.message_id} at {self.edited_at}'
+        # For top-level (no parent) messages we might want thread_root=self so
+        # queries can always filter by thread_root.
+        if not self.parent_message and self.thread_root is None:
+            # Set thread_root to self and save (only once)
+            self.thread_root = self
+            super().save(update_fields=['thread_root'])
 
