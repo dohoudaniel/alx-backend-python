@@ -1,44 +1,41 @@
 from django.test import TestCase
-
-# Create your tests here.
-# from django.test import TestCase
 from django.contrib.auth import get_user_model
-from .models import Message, Notification
+from .models import Message, MessageHistory
 
 User = get_user_model()
 
-class MessageNotificationTests(TestCase):
+class MessageEditHistoryTests(TestCase):
     def setUp(self):
-        self.sender = User.objects.create_user(username='alice', password='pass')
-        self.receiver = User.objects.create_user(username='bob', password='pass')
+        self.alice = User.objects.create_user(username='alice', password='pass')
+        self.bob = User.objects.create_user(username='bob', password='pass')
 
-    def test_creating_message_creates_notification_for_receiver(self):
-        msg = Message.objects.create(
-            sender=self.sender,
-            receiver=self.receiver,
-            content='Hello Bob!'
-        )
+    def test_editing_message_creates_history_and_updates_metadata(self):
+        msg = Message.objects.create(sender=self.alice, receiver=self.bob, content='original')
 
-        # There should be one notification for the receiver
-        notifications = Notification.objects.filter(user=self.receiver)
-        self.assertEqual(notifications.count(), 1)
-
-        n = notifications.first()
-        self.assertEqual(n.message, msg)
-        self.assertIn('sent you a message', n.verb)
-        self.assertFalse(n.is_read)
-
-    def test_updating_message_does_not_create_duplicate_notification(self):
-        msg = Message.objects.create(
-            sender=self.sender,
-            receiver=self.receiver,
-            content='First'
-        )
-
-        # update message content - should not create another notification
-        msg.content = 'Edited'
+        # simulate an edit done by alice via view: attach transient _editor and save
+        msg.content = 'edited content'
+        msg._editor = self.alice  # view would set this before saving
         msg.save()
 
-        notifications = Notification.objects.filter(user=self.receiver)
-        self.assertEqual(notifications.count(), 1)
+        # Check message is marked edited
+        msg.refresh_from_db()
+        self.assertTrue(msg.edited)
+        self.assertIsNotNone(msg.last_edited_at)
+        self.assertEqual(msg.last_edited_by, self.alice)
+
+        # There should be one history record with old content
+        histories = MessageHistory.objects.filter(message=msg)
+        self.assertEqual(histories.count(), 1)
+        hist = histories.first()
+        self.assertEqual(hist.old_content, 'original')
+        self.assertEqual(hist.editor, self.alice)
+
+    def test_updating_content_to_same_value_does_not_create_history(self):
+        msg = Message.objects.create(sender=self.alice, receiver=self.bob, content='same')
+        msg.content = 'same'
+        msg._editor = self.alice
+        msg.save()
+
+        histories = MessageHistory.objects.filter(message=msg)
+        self.assertEqual(histories.count(), 0)
 

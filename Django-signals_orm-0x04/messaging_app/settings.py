@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'chats',
     'django_filters',
+    'messaging.apps.MessagingConfig',
 ]
 
 MIDDLEWARE = [
