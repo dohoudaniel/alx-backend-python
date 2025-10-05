@@ -175,6 +175,36 @@ def build_thread_tree(messages: Iterable[Message]) -> List[Dict[str, Any]]:
     return roots
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def inbox_unread(request):
+    """
+    Return unread messages for the authenticated user using the custom manager.
+    Uses .select_related and .only() to optimize DB access (only fetch necessary fields).
+    """
+    user = request.user
+
+    # Use the custom manager's API: Message.unread.unread_for_user(user)
+    qs = Message.unread.unread_for_user(user).select_related('sender').only(
+        'id', 'sender__id', 'sender__username', 'content', 'timestamp', 'parent_message_id', 'thread_root_id'
+    ).order_by('-timestamp')
+
+    # Build lightweight response relying only on the fields we requested via .only()
+    result = []
+    for m in qs:
+        result.append({
+            "id": m.id,
+            "sender_id": m.sender_id,
+            "sender_username": getattr(m.sender, "username", None),
+            "content": m.content,
+            "timestamp": m.timestamp,
+            "parent_message_id": m.parent_message_id,
+            "thread_root_id": m.thread_root_id,
+        })
+
+    return Response(result)
+
+
 # ---------------------------
 # 4) ThreadDetailView (returns the threaded structure)
 # ---------------------------
