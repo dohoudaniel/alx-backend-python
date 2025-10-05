@@ -1,15 +1,13 @@
 # messaging/views.py
 from typing import List, Dict, Any, Iterable, Optional
-
+from django.views.decorators.cache import cache_page
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
-
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-
 from .models import Message, MessageHistory, Notification
 
 User = get_user_model()
@@ -203,6 +201,33 @@ def inbox_unread(request):
         })
 
     return Response(result)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@cache_page(60)  # cache for 60 seconds
+def conversation_messages(request, receiver_id):
+    """
+    Retrieve messages between the authenticated user and another user.
+    Cached for 60 seconds to reduce DB load.
+    """
+    user = request.user
+    qs = Message.objects.filter(
+        sender__in=[user.id, receiver_id],
+        receiver__in=[user.id, receiver_id]
+    ).select_related('sender', 'receiver').order_by('timestamp')
+
+    messages_data = [
+        {
+            "id": m.id,
+            "sender": m.sender.username,
+            "receiver": m.receiver.username,
+            "content": m.content,
+            "timestamp": m.timestamp,
+        }
+        for m in qs
+    ]
+    return Response(messages_data)
 
 
 # ---------------------------

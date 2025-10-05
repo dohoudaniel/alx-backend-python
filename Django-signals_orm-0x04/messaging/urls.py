@@ -9,4 +9,6 @@ urlpatterns = [
     path('messages/<int:pk>/', MessageUpdateView.as_view(), name='message-update'),
 
     path('account/delete', DeleteUserView.as_view(), name='account-delete'),
+
+    path('messages/<int:receiver_id>/', views.conversation_messages, name='conversation_messages'),
 ]
