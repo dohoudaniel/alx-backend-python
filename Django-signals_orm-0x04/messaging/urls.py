@@ -7,5 +7,6 @@ urlpatterns = [
 
     # GET/PUT /api/messages/<pk>/  (update)
     path('messages/<int:pk>/', MessageUpdateView.as_view(), name='message-update'),
-]
 
+    path('account/', DeleteUserView.as_view(), name='account-delete'),
+]

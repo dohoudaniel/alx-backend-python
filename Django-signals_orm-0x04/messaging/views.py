@@ -5,6 +5,12 @@ from rest_framework import generics, permissions
 from rest_framework.response import Response
 from .models import Message, MessageHistory
 from .serializers import MessageHistorySerializer, MessageSerializer
+from django.contrib.auth import get_user_model
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
+
+User = get_user_model()
 
 class MessageHistoryListView(generics.ListAPIView):
     """
@@ -34,3 +40,24 @@ class MessageUpdateView(generics.RetrieveUpdateAPIView):
         instance._editor = self.request.user
         serializer.save()
 
+class DeleteUserView(APIView):
+    """
+    DELETE /api/account/  -> deletes the authenticated user's account.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, *args, **kwargs):
+        user = request.user
+
+        # Optionally add extra checks: require password confirmation, prevent
+        # deleting superusers, or perform a 'soft delete' instead.
+        username = getattr(user, 'username', None)
+
+        # Delete the user — this triggers post_delete signals (including cleanup)
+        user.delete()
+
+        # If you're using token auth, client should also clear tokens on their side.
+        return Response(
+            {"detail": f"User {username or user.pk} deleted."},
+            status=status.HTTP_200_OK
+        )

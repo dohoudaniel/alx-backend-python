@@ -1,4 +1,4 @@
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import receiver
 from django.db import transaction
 from django.utils import timezone
@@ -63,3 +63,32 @@ def log_message_edit_history(sender, instance: Message, **kwargs):
     if editor:
         instance.last_edited_by = editor
 
+@receiver(post_delete, sender=User)
+def cleanup_user_related_data(sender, instance: User, **kwargs):
+    """
+    Clean up messaging-related data after a User is deleted.
+
+    We do explicit cleanup here to be explicit and resilient across apps,
+    and to ensure ordering (e.g., remove Notifications referencing the user,
+    null-out histories where the user was the editor, and delete messages).
+    If your model FKs already use CASCADE, some of these deletes will be no-ops,
+    but explicit deletion here avoids leftover objects if FK settings differ elsewhere.
+    """
+    # perform cleanup after the outer transaction completes
+    def _cleanup():
+        from .models import Message, Notification, MessageHistory
+
+        # 1) Remove notifications where the user was the recipient
+        Notification.objects.filter(user_id=instance.pk).delete()
+
+        # 2) Delete messages where user was sender or receiver.
+        # These will cascade-delete MessageHistory records that reference the Message.
+        Message.objects.filter(sender_id=instance.pk).delete()
+        Message.objects.filter(receiver_id=instance.pk).delete()
+
+        # 3) For MessageHistory entries where the deleted user was the editor,
+        #    prefer to keep the historical content but null the editor reference.
+        MessageHistory.objects.filter(editor_id=instance.pk).update(editor=None)
+
+        # 4) If you had any other per-user objects in messaging, wipe them here.
+    transaction.on_commit(_cleanup)
