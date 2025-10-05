@@ -1,0 +1,5 @@
+messaging_app/.env
+venv
+db.sqlite3
+requests.log
+request.log
