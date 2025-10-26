@@ -1,0 +1,3 @@
+minikube addons enable ingress
+kubectl apply -f messaging_app/ingress.yaml
+echo "$(minikube ip) messaging.local" | sudo tee -a /etc/hosts
