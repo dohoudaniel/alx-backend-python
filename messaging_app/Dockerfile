@@ -1,37 +1,23 @@
-# Dockerfile
-FROM python:3.10-slim
+# messaging_app/Dockerfile
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# 1. Base Image
+FROM python:3.10
 
-# Create app directory
+# 2. Set working directory in the container
 WORKDIR /app
 
-# Install system dependencies (for psycopg2 etc.)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    curl \
-  && rm -rf /var/lib/apt/lists/*
+# 3. Copy the requirements file
+COPY requirements.txt .
 
-# Copy requirements first to leverage Docker cache
-COPY requirements.txt /app/
-
-RUN pip install --upgrade pip setuptools wheel
+# 4. Install dependencies
+RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# Copy project code
-COPY . /app/
+# 5. Copy the entire project code into the container
+COPY . .
 
-# Ensure entrypoint is executable
-COPY ./entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
-
+# 6. Use -p 8000:8000 to map ports when running the container
 EXPOSE 8000
 
-# Use the entrypoint to run migrations/collectstatic if desired, then run gunicorn
-ENTRYPOINT ["/app/entrypoint.sh"]
-# Default command: run gunicorn binding to 0.0.0.0:8000
-CMD ["gunicorn", "messaging_app.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
-
+# 7. Default command to run the app
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
