@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+# kurbeScript
+# Start a local Minikube Kubernetes cluster, verify cluster-info, and list pods.
+# - checks for minikube and kubectl and optionally installs them
+# - starts minikube with docker driver if possible, else tries 'none' driver (requires sudo)
+# - prints kubectl cluster-info and kubectl get pods -A
+#
+# Usage: chmod +x kurbeScript && ./kurbeScript
+#
+set -o errexit
+set -o pipefail
+set -o nounset
+
+# Config
+MINIKUBE_BIN="/usr/local/bin/minikube"
+KUBECTL_BIN="/usr/local/bin/kubectl"
+RETRY_WAIT=5    # seconds between checks when waiting for cluster
+MAX_WAIT=180    # max seconds to wait for pods to appear
+
+# Helpers
+timestamp() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+log() { printf "%s %s\n" "$(timestamp)" "$*"; }
+
+command_exists() { command -v "$1" >/dev/null 2>&1; }
+
+confirm() {
+  # yes/no prompt; default yes if input is noninteractive (CI) - but we ask explicitly
+  local prompt="${1:-Are you sure?}"
+  local yn
+  read -r -p "$prompt [y/N]: " yn
+  case "$yn" in
+    [Yy]* ) return 0;;
+    * ) return 1;;
+  esac
+}
+
+# Ensure curl exists
+if ! command_exists curl; then
+  echo "Error: curl is required but not installed. Install curl and re-run." >&2
+  exit 1
+fi
+
+# Detect architecture for binary downloads
+ARCH=$(uname -m)
+case "$ARCH" in
+  x86_64|amd64) ARCH="amd64" ;;
+  aarch64|arm64) ARCH="arm64" ;;
+  *) log "Warning: unsupported arch $ARCH; downloads might fail";;
+esac
+
+# Install function for minikube
+install_minikube() {
+  log "Installing minikube to ${MINIKUBE_BIN} (requires sudo)..."
+  local url="https://storage.googleapis.com/minikube/releases/latest/minikube-linux-${ARCH}"
+  if confirm "Proceed to download minikube from ${url}?"; then
+    sudo curl -Lo "${MINIKUBE_BIN}" "${url}"
+    sudo chmod +x "${MINIKUBE_BIN}"
+    log "minikube installed to ${MINIKUBE_BIN}"
+  else
+    log "Skipping minikube install."
+  fi
+}
+
+# Install function for kubectl
+install_kubectl() {
+  log "Installing kubectl to ${KUBECTL_BIN} (requires sudo)..."
+  # determine stable kubectl release
+  local stable
+  stable=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+  if [ -z "$stable" ]; then
+    log "Failed to get stable kubectl version; aborting install."
+    return 1
+  fi
+  local url="https://dl.k8s.io/release/${stable}/bin/linux/${ARCH}/kubectl"
+  if confirm "Proceed to download kubectl ${stable} from ${url}?"; then
+    sudo curl -Lo "${KUBECTL_BIN}" "${url}"
+    sudo chmod +x "${KUBECTL_BIN}"
+    log "kubectl installed to ${KUBECTL_BIN}"
+  else
+    log "Skipping kubectl install."
+  fi
+}
+
+# Ensure minikube installed
+if ! command_exists minikube; then
+  log "minikube not found on PATH."
+  install_minikube
+  if ! command_exists minikube; then
+    log "minikube still not found after attempted install. Please install manually and re-run."
+    exit 1
+  fi
+else
+  log "minikube found: $(command -v minikube)"
+fi
+
+# Ensure kubectl installed
+if ! command_exists kubectl; then
+  log "kubectl not found on PATH."
+  install_kubectl
+  if ! command_exists kubectl; then
+    log "kubectl still not found after attempted install. Please install manually and re-run."
+    exit 1
+  fi
+else
+  log "kubectl found: $(command -v kubectl)"
+fi
+
+# Decide driver: prefer docker if available, else none (requires sudo)
+DRIVER=""
+if command_exists docker; then
+  log "Docker detected; will attempt to use driver=docker for minikube."
+  DRIVER="docker"
+else
+  log "Docker not detected. The 'none' driver will be used (requires sudo) if available."
+  DRIVER="none"
+fi
+
+# Start minikube (idempotent - will start if stopped)
+log "Starting minikube with driver=${DRIVER}..."
+if [ "$DRIVER" = "none" ]; then
+  # none driver requires sudo; inform user
+  log "The 'none' driver requires root privileges and modifies your host. Proceed with care."
+  if ! confirm "Start minikube with driver=none (requires sudo)?"; then
+    log "Aborting as requested. Install Docker and re-run to use driver=docker."
+    exit 1
+  fi
+  sudo minikube start --driver=none --profile=local || { log "minikube start failed"; exit 1; }
+else
+  # docker driver path
+  minikube start --driver=docker --profile=local || {
+    log "minikube start with docker driver failed. Attempting to collect logs and exit."
+    minikube logs --profile=local || true
+    exit 1
+  }
+fi
+
+log "minikube start command completed. Waiting briefly for cluster to settle..."
+sleep 5
+
+# Verify cluster is running
+log "Verifying cluster info via kubectl cluster-info..."
+if ! kubectl cluster-info >/dev/null 2>&1; then
+  log "kubectl cluster-info failed; showing minikube status and logs for debugging..."
+  minikube status --profile=local || true
+  minikube logs --profile=local || true
+  exit 1
+fi
+
+# Print cluster-info for user
+kubectl cluster-info
+echo
+
+# Show nodes
+log "Listing nodes..."
+kubectl get nodes -o wide || true
+echo
+
+# Retrieve pods: wait until some core pods appear or until MAX_WAIT seconds
+log "Retrieving pods across all namespaces (waiting up to ${MAX_WAIT}s for pods to show)..."
+
+elapsed=0
+while true; do
+  # list pods
+  kubectl get pods -A --no-headers -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,STATUS:.status.phase | sed -n '1,200p' || true
+  # check if there is at least one pod (the kube-system pods)
+  count=$(kubectl get pods -A --no-headers 2>/dev/null | wc -l || true)
+  if [ "${count}" -gt 0 ]; then
+    log "Found ${count} pods."
+    break
+  fi
+  if [ "${elapsed}" -ge "${MAX_WAIT}" ]; then
+    log "Timed out waiting for pods to appear (waited ${elapsed}s)."
+    kubectl get pods -A || true
+    exit 1
+  fi
+  sleep "${RETRY_WAIT}"
+  elapsed=$((elapsed + RETRY_WAIT))
+done
+
+# Print pods with descriptive formatting
+echo
+log "Pods (all namespaces):"
+kubectl get pods -A
+
+# Optionally show kube-system pods status for convenience
+echo
+log "kube-system pods (detailed):"
+kubectl -n kube-system get pods
+
+log "Kubernetes cluster appears to be running locally via minikube (profile=local)."
+
+# Summary suggestions
+cat <<'EOF'
+
+Next steps / hints:
+- To open the Kubernetes dashboard (minikube dashboard):
+    minikube dashboard --profile=local
+
+- To stop the cluster:
+    minikube stop --profile=local
+
+- To delete the cluster:
+    minikube delete --profile=local
+
+- If you used the 'none' driver and want Docker instead, install Docker and re-run script.
+
+EOF
+
+exit 0
+
