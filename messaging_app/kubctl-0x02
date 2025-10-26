@@ -1,0 +1,19 @@
+#!/bin/bash
+
+echo "Deploying Blue version..."
+kubectl apply -f messaging_app/blue_deployment.yaml
+
+echo "Deploying Green version..."
+kubectl apply -f messaging_app/green_deployment.yaml
+
+echo "Checking logs for Green pods..."
+GREEN_PODS=$(kubectl get pods -l version=green -o name)
+for pod in $GREEN_PODS; do
+    echo "Logs for $pod:"
+    kubectl logs $pod
+done
+
+echo "Switching service from Blue to Green..."
+kubectl patch service messaging-app-service -p '{"spec":{"selector":{"app":"messaging-app","version":"green"}}}'
+
+echo "Traffic is now going to Green version."
