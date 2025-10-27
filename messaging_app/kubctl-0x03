@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -e
+
+echo "Starting Rolling Update for Blue Deployment to v2.0..."
+
+# Start background curl to test availability
+echo "Testing app availability during rollout..."
+( while true; do
+    curl -s http://$(minikube ip):$(kubectl get svc messaging-app-service -o=jsonpath='{.spec.ports[0].nodePort}')/ || echo "DOWN";
+    sleep 1;
+done ) &
+CURL_PID=$!
+
+# Apply the new deployment
+kubectl apply -f messaging_app/blue_deployment.yaml
+
+# Monitor rollout
+kubectl rollout status deployment/messaging-app-blue
+
+# Stop curl loop
+kill $CURL_PID
+
+# Verify pods
+echo "Current Pods:"
+kubectl get pods -l version=blue -o wide
